@@ -18,10 +18,10 @@ def distance_lat_lng(lat1, lon1, lat2, lon2, units):
     :return: Distance between (lat1, lon1) and (lat2, long2) in the given units of measure.
     """
 
-    lat1rad = math.radians(lat1)
-    lon1rad = math.radians(lon1)
-    lat2rad = math.radians(lat2)
-    lon2rad = math.radians(lon2)
+    lat1rad = math.radians(float(lat1))
+    lon1rad = math.radians(float(lon1))
+    lat2rad = math.radians(float(lat2))
+    lon2rad = math.radians(float(lon2))
 
     return distance_lat_lng_rad(lat1rad, lon1rad, lat2rad, lon2rad, units)
 
@@ -37,7 +37,7 @@ def distance_lat_lng_rad(lat1rad, lon1rad, lat2rad, lon2rad, units):
     :param units: Units of measure; 'm' for statute miles, 'k' for kilometers or 'n' for nautical miles
     :return: The distance between (lat1rad, lon1rad) and (lat2rad, lon2rad) in the given unit of measure
     """
-    theta = lon1rad - lon2rad
+    theta = math.radians(math.degrees(lon1rad) - math.degrees(lon2rad))
     dist = math.sin(lat1rad) * math.sin(lat2rad) + math.cos(lat1rad) * math.cos(lat2rad) * math.cos(theta)
     dist = math.acos(dist)
     dist = math.degrees(dist)
