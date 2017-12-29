@@ -1,12 +1,12 @@
 import math
 
 
-def distance_lat_lng(lat1, lon1, lat2, lon2, units):
+def distance_lat_lng(lat1, lon1, lat2, lon2, units='m'):
     """
     Calculates the distance between two coordinates represented in decimal radians in the specified units of measure.
 
     For example, assume Chicago is (41.881832, -87.623177) and New York City is (40.712772, -74.006058); invoking this
-    function as distance_lat_lng(41.881832, -87.623177, 40.712772, -74.006058, 'm') will return 710.661184655.
+    function as distance_lat_lng(41.881832, -87.623177, 40.712772, -74.006058, 'm') will return ~710.6 (miles).
 
     Based on an algorithm published by GeoDataSource, http://www.geodatasource.com
 
@@ -37,11 +37,12 @@ def distance_lat_lng_rad(lat1rad, lon1rad, lat2rad, lon2rad, units):
     :param units: Units of measure; 'm' for statute miles, 'k' for kilometers or 'n' for nautical miles
     :return: The distance between (lat1rad, lon1rad) and (lat2rad, lon2rad) in the given unit of measure
     """
-    theta = math.radians(math.degrees(lon1rad) - math.degrees(lon2rad))
+    theta = lon1rad - lon2rad
     dist = math.sin(lat1rad) * math.sin(lat2rad) + math.cos(lat1rad) * math.cos(lat2rad) * math.cos(theta)
     dist = math.acos(dist)
     dist = math.degrees(dist)
-    dist = dist * 60 * 1.1515
+    dist = dist * 60.0 * 1.1515
+
     if units == 'k':
         dist = dist * 1.609344
     elif units == 'n':
