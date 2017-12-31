@@ -110,7 +110,7 @@ def get_census_population(census_tract_id):
         return _cached_tract_pops[census_tract_id]
 
     for tract in census_tracts_db.as_dictionary():
-        _cached_tract_pops[get_tract_id(tract[census_tracts_db.ROW_GEOID])] = tract[census_tracts_db.ROW_POPULATION]
+        _cached_tract_pops[convert_geo_id_to_tract_id(tract[census_tracts_db.ROW_GEOID])] = tract[census_tracts_db.ROW_POPULATION]
     return _cached_tract_pops[census_tract_id]
 
 
@@ -126,13 +126,30 @@ def get_census_centroid(census_tract_id):
 
     tracts = census_tracts_db.as_dictionary()
     for tract in tracts:
-        if census_tract_id == get_tract_id(tract[census_tracts_db.ROW_GEOID]):
+        if tract_id_equals(census_tract_id, tract[census_tracts_db.ROW_GEOID]):
             _cached_centroids[census_tract_id] = float(tract[census_tracts_db.ROW_LATITUDE]), float(tract[census_tracts_db.ROW_LONGITUDE])
             return _cached_centroids[census_tract_id]
 
 
-def get_tract_id(geoid):
-    return geoid[-6:]
+def convert_geo_id_to_tract_id(geo_id):
+    """
+    Converts an 11-digit GEOID to a Chicago census tract id. (Assumes the geo_id refers to a place in Chicago).
+    :param geo_id: The US Census Gazetteer GEOID to convert.
+    :return: The last six digits of the GEOID, equivalent to the census tract id.
+    """
+    return geo_id[-6:]
+
+
+def tract_id_equals(tract_id, geo_id):
+    """
+    Determines if a 11-digit GEOID (from the US census files) refers to the same place as a six-digit Chicago census
+    tract ID.
+
+    :param tract_id: A 6-digit Chicago census tract ID (i.e., '821402')
+    :param geo_id: An 11-digit GEOID from the US Census "Gazetteer" files (i.e., '17031821402')
+    :return: True if equivalent, False otherwise
+    """
+    return geo_id.startswith("1703") and tract_id == geo_id[-6:]
 
 
 def get_license_date_range(license_code):
