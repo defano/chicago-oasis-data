@@ -122,6 +122,12 @@ class BusinessLicenses(DataSet):
         self.ROW_LONGITUDE = "LONGITUDE"
         self.ROW_LICENSE_NUMBER = "LICENSE NUMBER"
         self.ROW_LICENSE_DESCRIPTION = "LICENSE DESCRIPTION"
+        self.ROW_BUSINESS_DBA = "DOING BUSINESS AS NAME"
+        self.ROW_BUSINESS_LEGAL_NAME = "LEGAL NAME"
+        self.ROW_BUSINESS_CITY = "CITY"
+        self.ROW_BUSINESS_ZIP = "ZIP CODE"
+        self.ROW_BUSINESS_STATE = "STATE"
+        self.ROW_BUSINESS_ADDRESS = "ADDRESS"
 
     def get_remote_url(self):
         return "http://data.cityofchicago.org/api/views/r5kz-chrr/rows.csv?accessType=DOWNLOAD&api_foundry=true"
@@ -137,6 +143,7 @@ class CensusTracts(DataSet):
         self.ROW_GEOID = "GEOID"
         self.ROW_LATITUDE = "INTPTLAT"
         self.ROW_LONGITUDE = "INTPTLONG"
+        self.ROW_POPULATION = "POP10"
 
     def preprocess(self, data):
         processed = str()

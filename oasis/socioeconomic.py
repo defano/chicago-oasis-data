@@ -2,7 +2,7 @@ from oasis import data
 import json
 
 
-def write_socioeconomics(output_dir):
+def produce_socioeconomic_rpt(output_dir):
     table = {}
 
     for neighborhood in data.socioeconomic_db.as_dictionary():

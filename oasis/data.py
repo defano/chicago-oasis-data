@@ -1,23 +1,32 @@
 from time import strptime
 from oasis.datasources import BusinessLicenses, CensusTracts, Neighborhoods, NeighborhoodTractsMap, Socioeconomic
 
-business_licenses_db = BusinessLicenses()
+# Cache of data sources
+license_db = BusinessLicenses()
 census_tracts_db = CensusTracts()
-neighborhoods_db = Neighborhoods()
+neighborhood_db = Neighborhoods()
 neighborhood_tracts_map_db = NeighborhoodTractsMap()
 socioeconomic_db = Socioeconomic()
 
 # Cache of previously computed requests; improves performance several order of magnitude
-_cached_license_date_start = {}
-_cached_license_date_end = {}
-_cached_license_codes = None
-_cached_license_desc = {}
-_cached_licenses = {}
-_cached_centroids = {}
-_cached_tracts_in_neighborhood = {}
-_cached_neighborhood_ids = []
-_cached_neighborhood_names = {}
-_cached_tract_ids = []
+_cached_neighborhood_ids = []           # Cached set of neighborhood ids (community area numbers, 1..77)
+_cached_tract_ids = set()               # Cached set of census tract ids
+_cached_neighborhood_names = {}         # Map of neighborhood id (1..77) to neighborhood name
+_cached_tracts_in_neighborhood = {}     # Map of neighborhood id (1..77) to list of census tract ids
+_cached_tract_pops = {}                 # Map of census_tract_id to population
+_cached_centroids = {}                  # Map of census_tract_id to centroid (lat, lng)
+_cached_license_date_start = {}         # Map of license code to first year with license records
+_cached_license_date_end = {}           # Map of license_code to last year with license records
+_cached_license_codes = set()           # Cached set of unique license codes
+_cached_license_desc = {}               # Map of license_code to license_description
+_cached_licenses = {}                   # Map of license_code to license_record[]
+_cached_business_dba = {}               # Map of license_number to doing-business-as name
+_cached_business_legal = {}             # Map of license_number to legal name
+_cached_business_loc = {}               # Map of license_number to (lat, lng)
+_cached_business_addr = {}              # Map of license_number to address
+_cached_business_city = {}              # Map of license_number to city
+_cached_business_state = {}             # Map of license_number to state
+_cached_business_zip = {}               # Map of license_number to zip
 
 
 def get_census_tract_ids():
@@ -48,10 +57,10 @@ def get_neighborhood_ids():
     if len(_cached_neighborhood_ids) > 0:
         return _cached_neighborhood_ids
 
-    neighborhoods = neighborhoods_db.as_dictionary()
+    neighborhoods = neighborhood_db.as_dictionary()
     ids = set()
     for neighborhood in neighborhoods:
-        ids.add(neighborhood[neighborhoods_db.ROW_AREA_NUMBER])
+        ids.add(neighborhood[neighborhood_db.ROW_AREA_NUMBER])
 
     _cached_neighborhood_ids = ids
     return ids
@@ -67,10 +76,10 @@ def get_neighborhood_name(neighborhood_id):
     if neighborhood_id in _cached_neighborhood_names:
         return _cached_neighborhood_names[neighborhood_id]
 
-    neighborhoods = neighborhoods_db.as_dictionary()
+    neighborhoods = neighborhood_db.as_dictionary()
     for neighborhood in neighborhoods:
-        if neighborhood[neighborhoods_db.ROW_AREA_NUMBER] == neighborhood_id:
-            _cached_neighborhood_names[neighborhood_id] = neighborhood[neighborhoods_db.ROW_AREA_NAME].upper()
+        if neighborhood[neighborhood_db.ROW_AREA_NUMBER] == neighborhood_id:
+            _cached_neighborhood_names[neighborhood_id] = neighborhood[neighborhood_db.ROW_AREA_NAME].upper()
             return _cached_neighborhood_names[neighborhood_id]
 
 
@@ -95,6 +104,16 @@ def get_census_tracts_in_neighborhood(neighborhood_id):
     return tracts
 
 
+def get_census_population(census_tract_id):
+    global _cached_tract_pops
+    if census_tract_id in _cached_tract_pops:
+        return _cached_tract_pops[census_tract_id]
+
+    for tract in census_tracts_db.as_dictionary():
+        _cached_tract_pops[get_tract_id(tract[census_tracts_db.ROW_GEOID])] = tract[census_tracts_db.ROW_POPULATION]
+    return _cached_tract_pops[census_tract_id]
+
+
 def get_census_centroid(census_tract_id):
     """
     Gets a pair of decimal coordinates representing the geographic center (centroid) of the requested census tract.
@@ -107,13 +126,13 @@ def get_census_centroid(census_tract_id):
 
     tracts = census_tracts_db.as_dictionary()
     for tract in tracts:
-        if geoid_matches(census_tract_id, tract[census_tracts_db.ROW_GEOID]):
+        if census_tract_id == get_tract_id(tract[census_tracts_db.ROW_GEOID]):
             _cached_centroids[census_tract_id] = float(tract[census_tracts_db.ROW_LATITUDE]), float(tract[census_tracts_db.ROW_LONGITUDE])
             return _cached_centroids[census_tract_id]
 
 
-def geoid_matches(geo1, geo2):
-    return geo1 in geo2 or geo2 in geo1
+def get_tract_id(geoid):
+    return geoid[-6:]
 
 
 def get_license_date_range(license_code):
@@ -125,12 +144,12 @@ def get_license_date_range(license_code):
 def get_licenses(license_code):
     _initialize_license_cache()
     global _cached_licenses
-    return sorted(_cached_licenses[license_code])
+    return _cached_licenses[license_code]
 
 
 def get_license_years(row):
-    start_string = row[business_licenses_db.ROW_LICENSE_TERM_START_DATE]
-    end_string = row[business_licenses_db.ROW_LICENSE_TERM_END_DATE]
+    start_string = row[license_db.ROW_LICENSE_TERM_START_DATE]
+    end_string = row[license_db.ROW_LICENSE_TERM_END_DATE]
 
     if start_string and end_string:
         start_year = strptime(start_string, "%m/%d/%Y").tm_year
@@ -148,7 +167,7 @@ def get_license_codes():
     """
     _initialize_license_cache()
     global _cached_license_codes
-    return _cached_license_codes
+    return sorted(_cached_license_codes)
 
 
 def get_license_description(license_code):
@@ -158,7 +177,56 @@ def get_license_description(license_code):
     return _cached_license_desc[license_code]
 
 
-def encode_license_description(license_desc):
+def get_business_dba(license_number):
+    _initialize_license_cache()
+
+    global _cached_business_dba
+    return _cached_business_dba[license_number]
+
+
+def get_business_legal_name(license_number):
+    _initialize_license_cache()
+
+    global _cached_business_legal
+    return _cached_business_legal[license_number]
+
+
+def get_business_lat_lng(license_number):
+    _initialize_license_cache()
+
+    global _cached_business_loc
+    return _cached_business_loc[license_number]
+
+
+def get_business_address(license_number):
+    _initialize_license_cache()
+
+    global _cached_business_addr
+    return _cached_business_addr[license_number]
+
+
+def get_business_city(license_number):
+    _initialize_license_cache()
+
+    global _cached_business_city
+    return _cached_business_city[license_number]
+
+
+def get_business_state(license_number):
+    _initialize_license_cache()
+
+    global _cached_business_state
+    return _cached_business_state[license_number]
+
+
+def get_business_zip(license_number):
+    _initialize_license_cache()
+
+    global _cached_business_zip
+    return _cached_business_zip[license_number]
+
+
+def get_license_key(license_desc):
     return license_desc.lower()\
         .replace(" ", "-")\
         .replace(",", "")\
@@ -168,34 +236,52 @@ def encode_license_description(license_desc):
 
 
 def download_all():
-    global business_licenses_db, census_tracts_db, neighborhoods_db, neighborhood_tracts_map_db
-    business_licenses_db = BusinessLicenses(True)
+    global license_db, census_tracts_db, neighborhood_db, neighborhood_tracts_map_db
+    license_db = BusinessLicenses(True)
     census_tracts_db = CensusTracts(True)
-    neighborhoods_db = Neighborhoods(True)
+    neighborhood_db = Neighborhoods(True)
     Socioeconomic(True)
     neighborhood_tracts_map_db = NeighborhoodTractsMap()
 
 
 def _initialize_license_cache():
-    global _cached_license_date_start,_cached_license_date_end ,_cached_license_codes,_cached_license_desc,_cached_licenses
+    global _cached_license_date_start, _cached_license_date_end , _cached_license_codes
+    global _cached_license_desc, _cached_licenses, _cached_business_dba, _cached_business_legal, _cached_business_loc
+    global _cached_business_addr, _cached_business_city, _cached_business_state, _cached_business_zip
 
     # Cache is initialized
     if _cached_licenses:
         return
 
-    print("Rebuilding license cache...")
+    print("Building license data caches...")
 
-    _cached_license_date_start = {}
-    _cached_license_date_end = {}
-    _cached_license_codes = set()
-    _cached_license_desc = {}
-    _cached_licenses = {}
+    _cached_license_date_start = {}     # Map of license code to first year with license records
+    _cached_license_date_end = {}       # Map of license_code to last year with license records
+    _cached_license_codes = set()       # Cached set of unique license codes
+    _cached_license_desc = {}           # Map of license_code to license_description
+    _cached_licenses = {}               # Map of license_code to license_record[]
+    _cached_business_dba = {}           # Map of license_number to doing-business-as name
+    _cached_business_legal = {}         # Map of license_number to legal name
+    _cached_business_loc = {}           # Map of license_number to (lat, lng)
+    _cached_business_addr = {}          # Map of license_number to address
+    _cached_business_city = {}          # Map of license_number to city
+    _cached_business_state = {}         # Map of license_number to state
+    _cached_business_zip = {}           # Map of license_number to zip
 
-    for license in business_licenses_db.as_dictionary():
-        license_code = license[business_licenses_db.ROW_LICENSE_CODE]
-        license_desc = license[business_licenses_db.ROW_LICENSE_DESCRIPTION]
-        license_start = license[business_licenses_db.ROW_LICENSE_TERM_START_DATE]
-        license_end = license[business_licenses_db.ROW_LICENSE_TERM_END_DATE]
+    for license in license_db.as_dictionary():
+        license_code = license[license_db.ROW_LICENSE_CODE]
+        license_desc = license[license_db.ROW_LICENSE_DESCRIPTION]
+        license_start = license[license_db.ROW_LICENSE_TERM_START_DATE]
+        license_end = license[license_db.ROW_LICENSE_TERM_END_DATE]
+        license_number = license[license_db.ROW_LICENSE_NUMBER]
+        business_dba = license[license_db.ROW_BUSINESS_DBA]
+        business_legal = license[license_db.ROW_BUSINESS_LEGAL_NAME]
+        business_address = license[license_db.ROW_BUSINESS_ADDRESS]
+        business_state = license[license_db.ROW_BUSINESS_STATE]
+        business_zip = license[license_db.ROW_BUSINESS_ZIP]
+        business_city = license[license_db.ROW_BUSINESS_CITY]
+        business_lat = license[license_db.ROW_LATITUDE]
+        business_lng = license[license_db.ROW_LONGITUDE]
 
         if license_start and license_end:
             start_year = strptime(license_start, "%m/%d/%Y").tm_year
@@ -221,6 +307,23 @@ def _initialize_license_cache():
 
         _cached_license_codes.add(license_code)
 
+        if business_dba and license_number not in _cached_business_dba:
+            _cached_business_dba[license_number] = business_dba
 
+        if business_legal and license_number not in _cached_business_legal:
+            _cached_business_legal[license_number] = business_legal
 
-    print(" ... done.")
+        if business_lng and business_lat and license_number not in _cached_business_loc:
+            _cached_business_loc[license_number] = (business_lat, business_lng)
+
+        if business_address and license_number not in _cached_business_addr:
+            _cached_business_addr[license_number] = business_address
+
+        if business_city and license_number not in _cached_business_city:
+            _cached_business_city[license_number] = business_city
+
+        if business_state and license_number not in _cached_business_state:
+            _cached_business_state[license_number] = business_state
+
+        if business_zip and license_number not in _cached_business_zip:
+            _cached_business_zip[license_number] = business_zip

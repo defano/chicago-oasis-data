@@ -1,2 +1,2 @@
-def write_critical_businesses(output_dir, license_codes, start_at):
+def produce_critical_business_rpt(output_dir, license_codes, start_at):
     pass

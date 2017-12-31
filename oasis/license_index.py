@@ -2,7 +2,7 @@ from oasis import data
 import json
 
 
-def write_license_index(output_dir):
+def produce_license_rpt(output_dir):
     table = []
     for license_code in data.get_license_codes():
         description = data.get_license_description(license_code)
@@ -11,7 +11,7 @@ def write_license_index(output_dir):
         table.append({
             "title": description,
             "label": description,
-            "value": data.encode_license_description(description),
+            "value": data.get_license_key(description),
             "min-year": year_range[0],
             "max-year": year_range[1]
         })

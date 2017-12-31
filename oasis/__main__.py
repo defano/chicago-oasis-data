@@ -7,6 +7,7 @@ import oasis.license_index
 import oasis.socioeconomic
 import oasis.critical_businesses
 
+
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
                                      description="""
@@ -37,7 +38,7 @@ See github.com/defano/chicago-oasis-data for more information.""")
                         help="start generating at this license code (useful for restarting failed jobs")
 
     parser.add_argument('-lc', action='append', dest='licenses', default=[],
-                        help="generate only this license code (e.g., 1472")
+                        help="generate only this license code (e.g., 1472)")
 
     parser.add_argument('-o', action='store', dest='output_dir', default="./",
                         help="path where output should be written (default is working directory")
@@ -62,19 +63,19 @@ See github.com/defano/chicago-oasis-data for more information.""")
 
     if not limited_datasets or args.index:
         print("Generating license index data.")
-        oasis.license_index.write_license_index(args.output_dir)
+        oasis.license_index.produce_license_rpt(args.output_dir)
 
     if not limited_datasets or args.demographic:
         print("Generating socioeconomic data.")
-        oasis.socioeconomic.write_socioeconomics(args.output_dir)
+        oasis.socioeconomic.produce_socioeconomic_rpt(args.output_dir)
 
     if not limited_datasets or args.critical:
         print("Generating critical business data.")
-        oasis.critical_businesses.write_critical_businesses(args.output_dir, args.licenses, args.start_at)
+        oasis.critical_businesses.produce_critical_business_rpt(args.output_dir, args.licenses, args.start_at)
 
     if not limited_datasets or args.access:
         print("Generating business accessibility data.")
-        oasis.acessibility.write_accessibility_data(args.output_dir, args.licenses, args.start_at)
+        oasis.acessibility.produce_accessibility_rpt(args.output_dir, args.licenses, args.start_at)
 
 
 if __name__ == "__main__":
