@@ -3,7 +3,7 @@ import sys
 
 class Progress:
 
-    def __init__(self, total, report_increment=5):
+    def __init__(self, total, report_increment=1):
         self._total = total
         self._this = 0
         self._last_reported = 0

@@ -1,9 +1,7 @@
 import json
-
 import math
-
-from oasis import data, gis, progress
 import os.path
+from oasis import data, gis, progress
 
 
 class _AccessDatabase:
@@ -171,7 +169,7 @@ class _CriticalBusinessRecordJsonEncoder(json.JSONEncoder):
         if isinstance(o, _CriticalBusinessRecord):
             return {"STATE": o.state,
                     "ZIP": int(o.zip),
-                    "LATTITUDE": float(o.lat_lng[0]),      # 'LATTITUDE' misspelled in api :(
+                    "LATTITUDE": float(o.lat_lng[0]),      # sic; 'LATTITUDE' is misspelled in API :(
                     "LONGITUDE": float(o.lat_lng[1]),
                     "ADDRESS": o.address,
                     "YEAR": int(o.year),
@@ -211,7 +209,7 @@ class _CensusRecordJsonEncoder(json.JSONEncoder):
         return super(_CensusRecordJsonEncoder, self).default(o)
 
 
-def produce_accessibility_rpt(output_dir, license_codes, start_at):
+def produce_accessibility_rpt(output_dir, critical_dir, census_dir, community_dir, license_codes, start_at):
 
     # Get set all of business license types issued by Chicago
     if not license_codes:
@@ -221,7 +219,6 @@ def produce_accessibility_rpt(output_dir, license_codes, start_at):
 
     # Walk each unique license type
     for license_code in license_codes:
-
         database = _AccessDatabase()
 
         if start_at is not None and start_at != license_code:
@@ -234,8 +231,9 @@ def produce_accessibility_rpt(output_dir, license_codes, start_at):
         licenses = data.get_licenses(license_code)
         licenses_count = len(licenses)
 
-        print("Crunching data for license code " + str(license_code) + " (" + data.get_license_description(license_code) + " - " + str(licenses_count) + " license records)")
         license_progress = progress.Progress(licenses_count)
+        print("Crunching data for license code " + str(license_code) + " (" + data.get_license_description(license_code)
+              + " - " + str(licenses_count) + " license records)")
 
         # Walk each business license of this category
         for license in licenses:
@@ -263,39 +261,40 @@ def produce_accessibility_rpt(output_dir, license_codes, start_at):
 
                         # Count this business in each year the license was active
                         for year in range(license_start, license_end + 1):
-                            database.count_business(tract_id, neighborhood_name, tract_population, distance, year, license_code, license)
+                            database.count_business(tract_id, neighborhood_name, tract_population, distance, year,
+                                                    license_code, license)
 
             license_progress.report()
 
         overall_progress.report("Overall progress: %s%% complete.\n")
-        _dump_access(database, license_code, license_desc, output_dir)
-        _dump_critical(database, license_code, license_desc, output_dir)
+        _dump_access(database, license_code, license_desc, output_dir, census_dir, community_dir)
+        _dump_critical(database, license_code, license_desc, output_dir, critical_dir)
 
 
-def _dump_critical(database, license_code, license_desc, output_dir):
+def _dump_critical(database, license_code, license_desc, output_dir, critical_dir):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    if not os.path.exists(output_dir + "/critical"):
-        os.makedirs(output_dir + "/critical")
+    if not os.path.exists(output_dir + "/" + critical_dir):
+        os.makedirs(output_dir + "/" + critical_dir)
 
     for year in database.get_years_for_license_code(license_code):
         filename = "critical-" + data.get_license_key(license_desc) + "-" + str(year) + ".json"
-        with open(output_dir + "/critical/" + filename, "w") as output_file:
-            output_file.write(database.get_critical_businesses_json(license_code, year))
+        with open(output_dir + "/" + critical_dir + "/" + filename, "w") as critical_file:
+            critical_file.write(database.get_critical_businesses_json(license_code, year))
 
 
-def _dump_access(database, license_code, license_desc, output_dir):
+def _dump_access(database, license_code, license_desc, output_dir, census_dir, community_dir):
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    if not os.path.exists(output_dir + "/census"):
-        os.makedirs(output_dir + "/census")
-    if not os.path.exists(output_dir + "/community"):
-        os.makedirs(output_dir + "/community")
+    if not os.path.exists(output_dir + "/" + census_dir):
+        os.makedirs(output_dir + "/" + census_dir)
+    if not os.path.exists(output_dir + "/" + community_dir):
+        os.makedirs(output_dir + "/" + community_dir)
 
     for year in database.get_years_for_license_code(license_code):
         filename = data.get_license_key(license_desc) + "-" + str(year) + ".json"
-        with open(output_dir + "/census/" + filename, "w") as output_file:
-            output_file.write(database.get_census_records_json(license_code, year))
-        with open(output_dir + "/community/" + filename, "w") as output_file:
-            output_file.write(database.get_neighborhood_records_json(license_code, year))
+        with open(output_dir + "/" + census_dir + "/" + filename, "w") as census_file:
+            census_file.write(database.get_census_records_json(license_code, year))
+        with open(output_dir + "/" + community_dir + "/" + filename, "w") as community_file:
+            community_file.write(database.get_neighborhood_records_json(license_code, year))
