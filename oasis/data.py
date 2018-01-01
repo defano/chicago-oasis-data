@@ -1,5 +1,6 @@
 from time import strptime
 from oasis.datasources import BusinessLicenses, CensusTracts, Neighborhoods, NeighborhoodTractsMap, Socioeconomic
+from oasis.progress import Progress
 
 # Cache of data sources
 license_db = BusinessLicenses()
@@ -20,6 +21,7 @@ _cached_license_date_end = {}           # Map of license_code to last year with 
 _cached_license_codes = set()           # Cached set of unique license codes
 _cached_license_desc = {}               # Map of license_code to license_description
 _cached_licenses = {}                   # Map of license_code to license_record[]
+_cached_business_years = {}             # Map of license_number to (license_start_year, license_end_year)
 _cached_business_dba = {}               # Map of license_number to doing-business-as name
 _cached_business_legal = {}             # Map of license_number to legal name
 _cached_business_loc = {}               # Map of license_number to (lat, lng)
@@ -153,28 +155,18 @@ def tract_id_equals(tract_id, geo_id):
 
 
 def get_license_date_range(license_code):
-    _initialize_license_cache()
     global _cached_license_date_start, _cached_license_date_end
     return _cached_license_date_start[license_code], _cached_license_date_end[license_code]
 
 
 def get_licenses(license_code):
-    _initialize_license_cache()
     global _cached_licenses
     return _cached_licenses[license_code]
 
 
-def get_license_years(row):
-    start_string = row[license_db.ROW_LICENSE_TERM_START_DATE]
-    end_string = row[license_db.ROW_LICENSE_TERM_END_DATE]
-
-    if start_string and end_string:
-        start_year = strptime(start_string, "%m/%d/%Y").tm_year
-        end_year = strptime(end_string, "%m/%d/%Y").tm_year
-    else:
-        return None, None
-
-    return start_year, end_year
+def get_business_years(license_number):
+    global _cached_business_years
+    return _cached_business_years[license_number]
 
 
 def get_license_codes():
@@ -182,74 +174,94 @@ def get_license_codes():
     Gets a set of unique license codes identifying each type of license issued by Chicago.
     :return: A set of unique license codes.
     """
-    _initialize_license_cache()
     global _cached_license_codes
     return sorted(_cached_license_codes)
 
 
 def get_license_description(license_code):
-    _initialize_license_cache()
-
     global _cached_license_desc
     return _cached_license_desc[license_code]
 
 
 def get_business_dba(license_number):
-    _initialize_license_cache()
-
     global _cached_business_dba
-    return _cached_business_dba[license_number]
+
+    if license_number in _cached_business_dba:
+        return _cached_business_dba[license_number]
+    else:
+        return "UNDEFINED"
 
 
 def get_business_legal_name(license_number):
-    _initialize_license_cache()
-
     global _cached_business_legal
-    return _cached_business_legal[license_number]
+
+    if license_number in _cached_business_legal:
+        return _cached_business_legal[license_number]
+    else:
+        return "UNDEFINED"
 
 
 def get_business_lat_lng(license_number):
-    _initialize_license_cache()
-
     global _cached_business_loc
-    return _cached_business_loc[license_number]
+
+    if license_number in _cached_business_loc:
+        return _cached_business_loc[license_number]
+    else:
+        return 0.0, 0.0
 
 
 def get_business_address(license_number):
-    _initialize_license_cache()
-
     global _cached_business_addr
-    return _cached_business_addr[license_number]
+
+    if license_number in _cached_business_addr:
+        return _cached_business_addr[license_number]
+    else:
+        return "0 WEST MADISON"
 
 
 def get_business_city(license_number):
-    _initialize_license_cache()
-
     global _cached_business_city
-    return _cached_business_city[license_number]
+
+    if license_number in _cached_business_city:
+        return _cached_business_city[license_number]
+    else:
+        return "CHICAGO"
 
 
 def get_business_state(license_number):
-    _initialize_license_cache()
-
     global _cached_business_state
-    return _cached_business_state[license_number]
+
+    if license_number in _cached_business_state:
+        return _cached_business_state[license_number]
+    else:
+        return "IL"
 
 
 def get_business_zip(license_number):
-    _initialize_license_cache()
-
     global _cached_business_zip
-    return _cached_business_zip[license_number]
+
+    if license_number in _cached_business_zip:
+        return _cached_business_zip[license_number]
+    else:
+        return "00000"
 
 
 def get_license_key(license_desc):
+    """
+
+    :param license_desc:
+    :return:
+    """
     return license_desc.lower()\
+        .replace(" - ", "-")\
         .replace(" ", "-")\
         .replace(",", "")\
         .replace("(", "")\
         .replace(")", "")\
-        .replace("'", "")
+        .replace("'", "")\
+        .replace("/", "-")\
+        .replace("\\", "-")\
+        .replace(";", "")
 
 
 def download_all():
@@ -261,12 +273,13 @@ def download_all():
     neighborhood_tracts_map_db = NeighborhoodTractsMap()
 
 
-def _initialize_license_cache():
+def initialize_license_cache():
     global _cached_license_date_start, _cached_license_date_end , _cached_license_codes
     global _cached_license_desc, _cached_licenses, _cached_business_dba, _cached_business_legal, _cached_business_loc
     global _cached_business_addr, _cached_business_city, _cached_business_state, _cached_business_zip
+    global _cached_business_years
 
-    # Cache is initialized
+    # Cache is already initialized
     if _cached_licenses:
         return
 
@@ -277,6 +290,7 @@ def _initialize_license_cache():
     _cached_license_codes = set()       # Cached set of unique license codes
     _cached_license_desc = {}           # Map of license_code to license_description
     _cached_licenses = {}               # Map of license_code to license_record[]
+    _cached_business_years = {}         # Map of license_number to (license_start_year, license_end_year)
     _cached_business_dba = {}           # Map of license_number to doing-business-as name
     _cached_business_legal = {}         # Map of license_number to legal name
     _cached_business_loc = {}           # Map of license_number to (lat, lng)
@@ -284,6 +298,8 @@ def _initialize_license_cache():
     _cached_business_city = {}          # Map of license_number to city
     _cached_business_state = {}         # Map of license_number to state
     _cached_business_zip = {}           # Map of license_number to zip
+
+    dup_licenses = set()
 
     for license in license_db.as_dictionary():
         license_code = license[license_db.ROW_LICENSE_CODE]
@@ -318,11 +334,20 @@ def _initialize_license_cache():
             _cached_license_desc[license_code] = license_desc
 
         if license_code:
+            _cached_license_codes.add(license_code)
+
             if license_code not in _cached_licenses:
                 _cached_licenses[license_code] = list()
-            _cached_licenses[license_code].append(license)
 
-        _cached_license_codes.add(license_code)
+            if license_number not in dup_licenses:
+                _cached_licenses[license_code].append(required_rows_copy(license))
+                _cached_business_years[license_number] = (start_year, end_year)
+                dup_licenses.add(license_number)
+            else:
+                if start_year < _cached_business_years[license_number][0]:
+                    _cached_business_years[license_number] = (start_year, _cached_business_years[license_number][1])
+                if end_year > _cached_business_years[license_number][1]:
+                    _cached_business_years[license_number] = (_cached_business_years[license_number][0], end_year)
 
         if business_dba and license_number not in _cached_business_dba:
             _cached_business_dba[license_number] = business_dba
@@ -344,3 +369,10 @@ def _initialize_license_cache():
 
         if business_zip and license_number not in _cached_business_zip:
             _cached_business_zip[license_number] = business_zip
+
+
+def required_rows_copy(license):
+    copy = dict()
+    for required_row in license_db.required_rows():
+        copy[required_row] = license[required_row]
+    return copy

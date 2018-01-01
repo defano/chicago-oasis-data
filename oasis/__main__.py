@@ -60,11 +60,12 @@ See github.com/defano/chicago-oasis-data for more information.""")
 
     print("Writing output to " + args.output_dir)
 
-    limited_datasets = args.analysis or args.index or args.demographic
-
     if args.clean:
         print("Forcing download of all dependent data...")
         oasis.data.download_all()
+
+    oasis.data.initialize_license_cache()
+    limited_datasets = args.analysis or args.index or args.demographic
 
     if not limited_datasets or args.index:
         print("Generating license index data...")

@@ -12,10 +12,8 @@ class _AccessDatabase:
 
     def count_business(self, tract_id, neighborhood_id, tract_population, distance, year, license_code, license_record):
 
-        license_desc = license_record[data.license_db.ROW_LICENSE_DESCRIPTION]
         license_number = license_record[data.license_db.ROW_LICENSE_NUMBER]
-
-        record_hash = str((tract_id, license_code, license_number, year))
+        license_desc = license_record[data.license_db.ROW_LICENSE_DESCRIPTION]
 
         if license_code not in self.data:
             self.data = {license_code: {}}
@@ -23,49 +21,46 @@ class _AccessDatabase:
         if year not in self.data[license_code]:
             self.data[license_code][year] = {}
 
-        if "t" not in self.data[license_code][year] or "n" not in self.data[license_code][year] or "c" not in self.data[license_code][year]:
-            self.data[license_code][year] = {"t": {}, "n": {}, "c": {}}
+        if "TRACT" not in self.data[license_code][year]:
+            self.data[license_code][year] = {"TRACT": {}, "HOOD": {}, "POP": {}}
 
-        # Some business licenses have database records that overlap years; prevent these overlaps from double-counting
-        # the business
-        if record_hash not in self.completed:
-            if tract_id not in self.data[license_code][year]['t']:
-                self.data[license_code][year]['t'][tract_id] = _AreaRecord(tract_id, year, license_desc)
-            self.data[license_code][year]['t'][tract_id].count_business(license_number, distance)
+        if tract_id not in self.data[license_code][year]['TRACT']:
+            self.data[license_code][year]['TRACT'][tract_id] = _AreaRecord(tract_id, year, license_desc)
+        self.data[license_code][year]['TRACT'][tract_id].count_business(license_number, distance)
 
-            if neighborhood_id not in self.data[license_code][year]['n']:
-                self.data[license_code][year]['n'][neighborhood_id] = _AreaRecord(neighborhood_id, year, license_desc)
-            self.data[license_code][year]['n'][neighborhood_id].count_business(license_number, distance)
+        if neighborhood_id not in self.data[license_code][year]['HOOD']:
+            self.data[license_code][year]['HOOD'][neighborhood_id] = _AreaRecord(neighborhood_id, year, license_desc)
+        self.data[license_code][year]['HOOD'][neighborhood_id].count_business(license_number, distance)
 
-            if distance <= 1.0:
-                if license_number not in self.data[license_code][year]['c']:
-                    self.data[license_code][year]['c'][license_number] = _ServedAreaRecord(license_number)
-                self.data[license_code][year]['c'][license_number].count_pop(tract_population)
-
-        # Don't process duplicates in the same year
-        self.completed.add(record_hash)
+        if distance <= 1.0:
+            if license_number not in self.data[license_code][year]['POP']:
+                self.data[license_code][year]['POP'][license_number] = _ServedAreaRecord(license_number)
+            self.data[license_code][year]['POP'][license_number].count_pop(tract_population)
 
     def get_license_codes(self):
         return self.data.keys()
 
     def get_years_for_license_code(self, license_code):
-        return self.data[license_code].keys()
+        if license_code in self.data:
+            return self.data[license_code].keys()
+        else:
+            return []
 
     def get_census_records_json(self, license_code, year):
         return json.dumps(self.get_census_records(license_code, year).values(), cls=_CensusRecordJsonEncoder, indent=2)
 
     def get_census_records(self, license_code, year):
-        return self.data[license_code][year]['t']
+        return self.data[license_code][year]['TRACT']
 
     def get_neighborhood_records(self, license_code, year):
-        return self.data[license_code][year]['n']
+        return self.data[license_code][year]['HOOD']
 
     def get_neighborhood_records_json(self, license_code, year):
         return json.dumps(self.get_neighborhood_records(license_code, year).values(),
                           cls=_NeighborhoodRecordJsonEncoder, indent=2)
 
     def get_served_population(self, license_code, license_number, year):
-        return self.data[license_code][year]['c'][license_number].pop
+        return self.data[license_code][year]['POP'][license_number].pop
 
     def get_critical_businesses(self, license_code, year):
         critical_businesses = set()
@@ -221,7 +216,7 @@ def produce_accessibility_rpt(output_dir, critical_dir, census_dir, community_di
     for license_code in license_codes:
         database = _AccessDatabase()
 
-        if start_at is not None and start_at != license_code:
+        if start_at is not None and int(start_at) > int(license_code):
             print("Skipping license code " + license_code + " (starting at " + str(start_at) + ")")
             continue
         else:
@@ -237,13 +232,15 @@ def produce_accessibility_rpt(output_dir, critical_dir, census_dir, community_di
 
         # Walk each business license of this category
         for license in licenses:
-            license_lat, license_lng = license[data.license_db.ROW_LATITUDE], license[data.license_db.ROW_LONGITUDE]
-            license_start, license_end = data.get_license_years(license)
-            license_desc = license[data.license_db.ROW_LICENSE_DESCRIPTION]
+            license_number = license[data.license_db.ROW_LICENSE_NUMBER]
+            license_start, license_end = data.get_business_years(license_number)
 
             # Ignore licenses with bogus start or end dates
             if license_start is None or license_end is None:
                 continue
+
+            license_lat, license_lng = license[data.license_db.ROW_LATITUDE], license[data.license_db.ROW_LONGITUDE]
+            license_desc = license[data.license_db.ROW_LICENSE_DESCRIPTION]
 
             # Walk each neighborhood
             for neighborhood_id in data.get_neighborhood_ids():
@@ -267,8 +264,12 @@ def produce_accessibility_rpt(output_dir, critical_dir, census_dir, community_di
             license_progress.report()
 
         overall_progress.report("Overall progress: %s%% complete.\n")
+
+        # Dump this result-set to disk
         _dump_access(database, license_code, license_desc, output_dir, census_dir, community_dir)
         _dump_critical(database, license_code, license_desc, output_dir, critical_dir)
+
+        del database        # Try to convince Python to free our last result set
 
 
 def _dump_critical(database, license_code, license_desc, output_dir, critical_dir):
@@ -298,3 +299,4 @@ def _dump_access(database, license_code, license_desc, output_dir, census_dir, c
             census_file.write(database.get_census_records_json(license_code, year))
         with open(output_dir + "/" + community_dir + "/" + filename, "w") as community_file:
             community_file.write(database.get_neighborhood_records_json(license_code, year))
+

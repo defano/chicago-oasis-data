@@ -83,10 +83,17 @@ class DataSet:
         :param csv: A CSV DictReader containing the loaded data
         :return: The CSV DictReader passed as an argument (for method chaining)
         """
-        for row in self.__dict__.keys():
-            if row.startswith("ROW_") and self.__dict__[row] not in csv.fieldnames:
-                raise Exception("Row missing from dataset: " + str(self.__dict__[row]) + " Available rows: " + str(csv.fieldnames))
+        for required in self.required_rows():
+            if required not in csv.fieldnames:
+                raise Exception("Row missing from dataset: " + str(required) + " Available rows: " + str(csv.fieldnames))
         return csv
+
+    def required_rows(self):
+        required = []
+        for row in self.__dict__.keys():
+            if row.startswith("ROW_"):
+                required.append(self.__dict__[row])
+        return required
 
 
 class Socioeconomic(DataSet):
