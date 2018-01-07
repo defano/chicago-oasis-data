@@ -3,8 +3,12 @@ import json
 
 
 def produce_socioeconomic_rpt(output_dir):
+    """
+    Produce a JSON report of socioeconomic indicators as the Chicago neighborhood level.
+    :param output_dir: The directory where this report file should be written
+    :return: None
+    """
     table = {}
-
     for neighborhood in data.socioeconomic_db.as_dictionary():
         name = neighborhood[data.socioeconomic_db.ROW_COMMUNITY_NAME].upper()
 

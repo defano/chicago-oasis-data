@@ -1,6 +1,5 @@
 from time import strptime
 from oasis.datasources import BusinessLicenses, CensusTracts, Neighborhoods, NeighborhoodTractsMap, Socioeconomic
-from oasis.progress import Progress
 
 # Cache of data sources
 license_db = BusinessLicenses()
@@ -91,7 +90,6 @@ def get_census_tracts_in_neighborhood(neighborhood_id):
     :param neighborhood_id: The ID of the neighborhood to be returned
     :return:
     """
-
     global _cached_tracts_in_neighborhood
     if neighborhood_id in _cached_tracts_in_neighborhood:
         return _cached_tracts_in_neighborhood[neighborhood_id]
@@ -107,6 +105,11 @@ def get_census_tracts_in_neighborhood(neighborhood_id):
 
 
 def get_census_population(census_tract_id):
+    """
+    Returns the population of the requested census tract.
+    :param census_tract_id: The census tract id
+    :return: The population of the census tract
+    """
     global _cached_tract_pops
     if census_tract_id in _cached_tract_pops:
         return _cached_tract_pops[census_tract_id]
@@ -155,16 +158,33 @@ def tract_id_equals(tract_id, geo_id):
 
 
 def get_license_date_range(license_code):
+    """
+    Gets a pair of years indicating the earliest latest date for which data is available for the given license code.
+    :param license_code: The license code
+    :return: A pair of (earliest_date, latest_date)
+    """
     global _cached_license_date_start, _cached_license_date_end
     return _cached_license_date_start[license_code], _cached_license_date_end[license_code]
 
 
 def get_licenses(license_code):
+    """
+    Returns a list of business license records associated with the given license code. Each record is a map of row name
+    to row value. Only "required" rows are returned in the result set. See the datasources module for information about
+    required rows.
+    :param license_code: The license code of the licenses to return
+    :return: A list of business license record dictionaries.
+    """
     global _cached_licenses
     return _cached_licenses[license_code]
 
 
 def get_business_years(license_number):
+    """
+    Retuns a set of four-digit years containing every year for which data exists.
+    :param license_number: The license number whose license year range should be returned.
+    :return: A set of years in which the business was active.
+    """
     global _cached_business_years
     return _cached_business_years[license_number]
 
@@ -179,11 +199,21 @@ def get_license_codes():
 
 
 def get_license_description(license_code):
+    """
+    Gets the description of the given license code. For example, license code '1002' results in 'Accessory Garage'
+    :param license_code: The license code
+    :return: The license description
+    """
     global _cached_license_desc
     return _cached_license_desc[license_code]
 
 
 def get_business_dba(license_number):
+    """
+    Gets the name under which the business is "doing business as". Returns "UNDEFINED" if no DBA is registered.
+    :param license_number: The business' license number
+    :return: The business' DBA name
+    """
     global _cached_business_dba
 
     if license_number in _cached_business_dba:
@@ -193,6 +223,11 @@ def get_business_dba(license_number):
 
 
 def get_business_legal_name(license_number):
+    """
+    Gets the legal name of the business. Returns "UNDEFINED" if no legal name is registered.
+    :param license_number: The business' license number
+    :return: The business' legal name
+    """
     global _cached_business_legal
 
     if license_number in _cached_business_legal:
@@ -202,6 +237,12 @@ def get_business_legal_name(license_number):
 
 
 def get_business_lat_lng(license_number):
+    """
+    Gets a pair indicating the latitude and longitude of the business address; returns (0.0, 0.0) no lat/lng is
+    available.
+    :param license_number: The business' license number
+    :return: The lat/lng of the business
+    """
     global _cached_business_loc
 
     if license_number in _cached_business_loc:
@@ -211,46 +252,69 @@ def get_business_lat_lng(license_number):
 
 
 def get_business_address(license_number):
+    """
+    Gets the street address of the business; returns "UNDEFINED" in no address is available.
+    :param license_number: The business' license number
+    :return: The street address of the business, for example "222 SOUTH RIVERSIDE PLZ"
+    """
     global _cached_business_addr
 
     if license_number in _cached_business_addr:
         return _cached_business_addr[license_number]
     else:
-        return "0 WEST MADISON"
+        return "UNDEFINED"
 
 
 def get_business_city(license_number):
+    """
+    Gets the city associated with the business' address; should always be "CHICAGO". Returns "UNDEFINED" if no city
+    is available.
+    :param license_number: The business' license number.
+    :return: The name of the city listed in the business' address
+    """
     global _cached_business_city
 
     if license_number in _cached_business_city:
         return _cached_business_city[license_number]
     else:
-        return "CHICAGO"
+        return "UNDEFINED"
 
 
 def get_business_state(license_number):
+    """
+    Gets the state zip abbreviation associated with the business' address; should always be "IL". Returns "UNDEFINED"
+    if no state is available.
+    :param license_number: The business' license number
+    :return: The two-letter state abbreviation associated with the business address
+    """
     global _cached_business_state
 
     if license_number in _cached_business_state:
         return _cached_business_state[license_number]
     else:
-        return "IL"
+        return "UNDEFINED"
 
 
 def get_business_zip(license_number):
+    """
+    Gets the zip code associated with the business' address; returns "UNDEFINED" if no zip code is available.
+    :param license_number: The business' license number.
+    :return: The business' zip code
+    """
     global _cached_business_zip
 
     if license_number in _cached_business_zip:
         return _cached_business_zip[license_number]
     else:
-        return "00000"
+        return "UNDEFINED"
 
 
-def get_license_key(license_desc):
+def get_license_file_key(license_desc):
     """
-
-    :param license_desc:
-    :return:
+    Converts a license description to a file and URL-safe string. For example, "Music and Dance" becomes
+    "music-and-dance".
+    :param license_desc: The license description to encode
+    :return: The encoded license description
     """
     return license_desc.lower()\
         .replace(" - ", "-")\
@@ -265,6 +329,10 @@ def get_license_key(license_desc):
 
 
 def download_all():
+    """
+    Mark all datasets as needing download.
+    :return: None
+    """
     global license_db, census_tracts_db, neighborhood_db, neighborhood_tracts_map_db
     license_db = BusinessLicenses(True)
     census_tracts_db = CensusTracts(True)
@@ -274,7 +342,12 @@ def download_all():
 
 
 def initialize_license_cache():
-    global _cached_license_date_start, _cached_license_date_end , _cached_license_codes
+    """
+    Builds a set of caches used by this module to provide fast data lookups. This method _must_ be called before any
+    other methods in this module are used
+    :return: None
+    """
+    global _cached_license_date_start, _cached_license_date_end, _cached_license_codes
     global _cached_license_desc, _cached_licenses, _cached_business_dba, _cached_business_legal, _cached_business_loc
     global _cached_business_addr, _cached_business_city, _cached_business_state, _cached_business_zip
     global _cached_business_years
@@ -340,7 +413,7 @@ def initialize_license_cache():
                 _cached_licenses[license_code] = list()
 
             if license_number not in dup_licenses:
-                _cached_licenses[license_code].append(required_rows_copy(license))
+                _cached_licenses[license_code].append(license_db.required_rows_copy(license))
                 _cached_business_years[license_number] = (start_year, end_year)
                 dup_licenses.add(license_number)
             else:
@@ -369,10 +442,3 @@ def initialize_license_cache():
 
         if business_zip and license_number not in _cached_business_zip:
             _cached_business_zip[license_number] = business_zip
-
-
-def required_rows_copy(license):
-    copy = dict()
-    for required_row in license_db.required_rows():
-        copy[required_row] = license[required_row]
-    return copy

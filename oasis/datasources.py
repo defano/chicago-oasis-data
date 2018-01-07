@@ -95,6 +95,12 @@ class DataSet:
                 required.append(self.__dict__[row])
         return required
 
+    def required_rows_copy(self, row):
+        copy = dict()
+        for required_row in self.required_rows():
+            copy[required_row] = row[required_row]
+        return copy
+
 
 class Socioeconomic(DataSet):
 

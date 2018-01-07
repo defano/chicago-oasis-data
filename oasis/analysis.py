@@ -4,14 +4,40 @@ import os.path
 from oasis import data, gis, progress
 
 
-class _AccessDatabase:
+class _Analysis:
+    """
+    An in-memory "database" of analysis records. Aggregates accessibility information on a per license and year basis.
+    """
+
+    TRACT_KEY = "t"
+    NEIGHBORHOOD_KEY = 'h'
+    POPULATION_KEY = 'p'
 
     def __init__(self):
         self.data = {}
         self.completed = set()
 
     def count_business(self, tract_id, neighborhood_id, tract_population, distance, year, license_code, license_record):
+        """
+        Update analysis with information from a given business license record.
 
+        This method should be invoked for every row in the license table, crossed with every census tract, crossed with
+        every year the license record applies. Thus, in performing a full analysis, this method will get called
+        approximately 1.6 billion times... ~1M license rows x ~2 years per record (on avg) x ~800 census tracts in
+        Chicago.
+
+        Note that this method DOES NOT filter duplicates. It is the responsibility of the caller to assure the same
+        business is not being counted twice in the same year or census tract.
+
+        :param tract_id: The census tract ID where this business is located
+        :param neighborhood_id: The name of the neighborhood where the business is located
+        :param tract_population: The population of this census tract
+        :param distance: The distance (in miles) of the business from the given census tract
+        :param year: The calendar year in which this license record is valid (i.e., 2017)
+        :param license_code: The numeric license code which identifies the business category (i.e., 1004)
+        :param license_record: A dictionary containing all of the "rows" of this license record.
+        :return: Nada
+        """
         license_number = license_record[data.license_db.ROW_LICENSE_NUMBER]
         license_desc = license_record[data.license_db.ROW_LICENSE_DESCRIPTION]
 
@@ -21,50 +47,108 @@ class _AccessDatabase:
         if year not in self.data[license_code]:
             self.data[license_code][year] = {}
 
-        if "TRACT" not in self.data[license_code][year]:
-            self.data[license_code][year] = {"TRACT": {}, "HOOD": {}, "POP": {}}
+        if _Analysis.TRACT_KEY not in self.data[license_code][year]:
+            self.data[license_code][year] = {_Analysis.TRACT_KEY: {},
+                                             _Analysis.NEIGHBORHOOD_KEY: {},
+                                             _Analysis.POPULATION_KEY: {}}
 
-        if tract_id not in self.data[license_code][year]['TRACT']:
-            self.data[license_code][year]['TRACT'][tract_id] = _AreaRecord(tract_id, year, license_desc)
-        self.data[license_code][year]['TRACT'][tract_id].count_business(license_number, distance)
+        if tract_id not in self.data[license_code][year][_Analysis.TRACT_KEY]:
+            self.data[license_code][year][_Analysis.TRACT_KEY][tract_id] = _AreaRecord(tract_id, year, license_desc)
+        self.data[license_code][year][_Analysis.TRACT_KEY][tract_id].count_business(license_number, distance)
 
-        if neighborhood_id not in self.data[license_code][year]['HOOD']:
-            self.data[license_code][year]['HOOD'][neighborhood_id] = _AreaRecord(neighborhood_id, year, license_desc)
-        self.data[license_code][year]['HOOD'][neighborhood_id].count_business(license_number, distance)
+        if neighborhood_id not in self.data[license_code][year][_Analysis.NEIGHBORHOOD_KEY]:
+            self.data[license_code][year][_Analysis.NEIGHBORHOOD_KEY][neighborhood_id] = \
+                _AreaRecord(neighborhood_id, year, license_desc)
+
+        self.data[license_code][year][_Analysis.NEIGHBORHOOD_KEY][neighborhood_id]\
+            .count_business(license_number, distance)
 
         if distance <= 1.0:
-            if license_number not in self.data[license_code][year]['POP']:
-                self.data[license_code][year]['POP'][license_number] = _ServedAreaRecord(license_number)
-            self.data[license_code][year]['POP'][license_number].count_pop(tract_population)
+            if license_number not in self.data[license_code][year][_Analysis.POPULATION_KEY]:
+                self.data[license_code][year][_Analysis.POPULATION_KEY][license_number] = \
+                    _ServedAreaRecord(license_number)
+            self.data[license_code][year][_Analysis.POPULATION_KEY][license_number].count_pop(tract_population)
 
-    def get_license_codes(self):
+    def get_analyzed_license_codes(self):
+        """
+        Gets a set of unique license codes present in the analysis.
+        :return: The license keys
+        """
         return self.data.keys()
 
-    def get_years_for_license_code(self, license_code):
+    def get_analyzed_years_for_license_code(self, license_code):
+        """
+        Gets a set of unique years for analysis data was collected for licenses of the given license code.
+        :param license_code: The license code (i.e., 1004) whose data should be retrieved
+        :return: The set of years for which data for the given license code was collected, or the empty list if no
+        data is available.
+        """
         if license_code in self.data:
             return self.data[license_code].keys()
         else:
             return []
 
-    def get_census_records_json(self, license_code, year):
-        return json.dumps(self.get_census_records(license_code, year).values(), cls=_CensusRecordJsonEncoder, indent=2)
+    def get_analyzed_census_records_json(self, license_code, year):
+        """
+        Returns a JSON-formatted string containing an array of census-level accessibility records for the given year
+        and license code. This data is suitable for writing to result files in the 'census/' directory.
+        :param license_code: The numeric license code
+        :param year: The year
+        :return: A JSON-formatted string
+        """
+        return json.dumps(self.get_analyzed_census_records(license_code, year).values(),
+                          cls=_CensusRecordJsonEncoder, indent=2)
 
-    def get_census_records(self, license_code, year):
-        return self.data[license_code][year]['TRACT']
+    def get_analyzed_census_records(self, license_code, year):
+        """
+        Gets a map of tract_id to _AreaRecord (representing the aggregated accessibility data for the given license code
+        and year)
+        :param license_code: The license code whose data should be returned
+        :param year: The year for which data should be returned
+        :return: A map of tract_id -> _AreaRecord
+        """
+        return self.data[license_code][year][_Analysis.TRACT_KEY]
 
     def get_neighborhood_records(self, license_code, year):
-        return self.data[license_code][year]['HOOD']
+        """
+        Gets a map of neighborhood_id to _AreaRecord (representing the aggregated accessibility data for the given
+        license code and year)
+        :param license_code: The license code whose data should be returned
+        :param year: The year for which data should be returned
+        :return: A map of neighborhood_id -> _AreaRecord
+        """
+        return self.data[license_code][year][_Analysis.NEIGHBORHOOD_KEY]
 
     def get_neighborhood_records_json(self, license_code, year):
+        """
+        Returns a JSON-formatted string containing an array of neighborhood-level accessibility records for the given
+        year and license code. This data is suitable for writing to result files in the 'community/' directory.
+        :param license_code: The numeric license code
+        :param year: The year
+        :return: A JSON-formatted string
+        """
         return json.dumps(self.get_neighborhood_records(license_code, year).values(),
                           cls=_NeighborhoodRecordJsonEncoder, indent=2)
 
     def get_served_population(self, license_code, license_number, year):
-        return self.data[license_code][year]['POP'][license_number].pop
+        """
+        Returns the population living within one mile of the business identified by license code and license number.
+        :param license_code: The license code of the business
+        :param license_number: The license number of the business
+        :param year: The year for which data should be retrieved
+        :return: The population within one mile of the business
+        """
+        return self.data[license_code][year][_Analysis.POPULATION_KEY][license_number].pop
 
     def get_critical_businesses(self, license_code, year):
+        """
+        Returns a list of _CriticalBusinessRecord identifying all the critical businesses of a given license type
+        :param license_code: The license code of businesses to be returned
+        :param year: The year for which data should be returned
+        :return: A list of zero or more _CriticalBusinessRecord objects
+        """
         critical_businesses = set()
-        census_records = self.get_census_records(license_code, year)
+        census_records = self.get_analyzed_census_records(license_code, year)
         for tract in census_records:
             if len(census_records[tract].nearby_businesses) == 1:
                 license_number = census_records[tract].nearby_businesses[0]
@@ -75,6 +159,13 @@ class _AccessDatabase:
         return list(critical_businesses)
 
     def get_critical_businesses_json(self, license_code, year):
+        """
+        Returns a JSON-formatted string containing an array of critical business records for the given year and license
+        code. This data is suitable for writing to result files in the 'critical/' directory.
+        :param license_code: The numeric license code
+        :param year: The year
+        :return: A JSON-formatted string
+        """
         return json.dumps(self.get_critical_businesses(license_code, year),
                           cls=_CriticalBusinessRecordJsonEncoder, indent=2)
 
@@ -139,18 +230,27 @@ class _AreaRecord:
         self.nearby_businesses = []
 
     def count_business(self, license_number, distance):
+        """
+        Updates this analysis record with information about a new business.
+        :param license_number: The license number of the business
+        :param distance: The distance (in miles) from the centroid of the analyzed area
+        :return: None
+        """
         self.access2 += 1.0 / math.pow(distance, 2)
         self.access1 += 1.0 / distance
         if distance <= 1.0:
             self.one_mile += 1
             self.nearby_businesses.append(license_number)
-
         if distance <= 2.0:
             self.two_mile += 1
         if distance <= 3.0:
             self.three_mile += 1
 
     def get_tract10(self):
+        """
+        Converts a six-digit census tract identifier (i.e., 061037) to the "tract-10" representation (610.37)
+        :return: The tract-10 representation of this record's census tract_id
+        """
         if len(self.area) > 4 and self.area.endswith("00"):
             return self.area[:-2]
         elif len(self.area) > 4:
@@ -160,6 +260,9 @@ class _AreaRecord:
 
 
 class _CriticalBusinessRecordJsonEncoder(json.JSONEncoder):
+    """
+    Encodes _CriticalBusinessRecord objects in JSON conforming to the Chicago Oasis API.
+    """
     def default(self, o):
         if isinstance(o, _CriticalBusinessRecord):
             return {"STATE": o.state,
@@ -178,6 +281,9 @@ class _CriticalBusinessRecordJsonEncoder(json.JSONEncoder):
 
 
 class _NeighborhoodRecordJsonEncoder(json.JSONEncoder):
+    """
+    Encodes an _AreaRecord representing a neighborhood in JSON conforming to the Chicago Oasis API.
+    """
     def default(self, o):
         if isinstance(o, _AreaRecord):
             return {"BUSINESS_TYPE": o.business_type,
@@ -190,6 +296,9 @@ class _NeighborhoodRecordJsonEncoder(json.JSONEncoder):
 
 
 class _CensusRecordJsonEncoder(json.JSONEncoder):
+    """
+    Encodes an _AreaRecord representating a census tract in JSON conforming to the Chicago Oasis API.
+    """
     def default(self, o):
         if isinstance(o, _AreaRecord):
             return {"BUSINESS_TYPE": o.business_type,
@@ -205,8 +314,18 @@ class _CensusRecordJsonEncoder(json.JSONEncoder):
 
 
 def produce_accessibility_rpt(output_dir, critical_dir, census_dir, community_dir, license_codes, start_at):
+    """
+    Performs an accessibility analysis of Chicago business licenses, writing data incrementally to output files.
+    :param output_dir: The path to output directory ('./' by default)
+    :param critical_dir: The name of the directory where critical business data is written ('critical/' by default)
+    :param census_dir: The name of the directory where census-level accessibility data is written ('/census' by default)
+    :param community_dir: The name of the directory where neighborhood-level data is written ('community/' by default)
+    :param license_codes: A list of license codes to be analyzed; empty indicates all available licenses.
+    :param start_at: Start analysis at this code; analyses run in numerical order
+    :return: None
+    """
 
-    # Get set all of business license types issued by Chicago
+    # Get the set of all business license categories issued by Chicago
     if not license_codes:
         license_codes = data.get_license_codes()
 
@@ -214,8 +333,9 @@ def produce_accessibility_rpt(output_dir, critical_dir, census_dir, community_di
 
     # Walk each unique license type
     for license_code in license_codes:
-        database = _AccessDatabase()
+        database = _Analysis()
 
+        # When user has requested restarting analysis at specific code, skip ahead...
         if start_at is not None and int(start_at) > int(license_code):
             print("Skipping license code " + license_code + " (starting at " + str(start_at) + ")")
             continue
@@ -269,34 +389,49 @@ def produce_accessibility_rpt(output_dir, critical_dir, census_dir, community_di
         _dump_access(database, license_code, license_desc, output_dir, census_dir, community_dir)
         _dump_critical(database, license_code, license_desc, output_dir, critical_dir)
 
-        del database        # Try to convince Python to free our last result set
+        del database        # Try to convince Python to free our last result set (they're memory hogs)
 
 
 def _dump_critical(database, license_code, license_desc, output_dir, critical_dir):
+    """
+    Writes critical business data to disk.
+    :param database: The _Analysis object containing data to write
+    :param license_code: The license code of the data to write
+    :param license_desc: The license code description of the data to write (determines file names)
+    :param output_dir: The base output directory to write
+    :param critical_dir: The name of the directory in the output directory to write
+    :return: None
+    """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     if not os.path.exists(output_dir + "/" + critical_dir):
         os.makedirs(output_dir + "/" + critical_dir)
-
-    for year in database.get_years_for_license_code(license_code):
-        filename = "critical-" + data.get_license_key(license_desc) + "-" + str(year) + ".json"
+    for year in database.get_analyzed_years_for_license_code(license_code):
+        filename = "critical-" + data.get_license_file_key(license_desc) + "-" + str(year) + ".json"
         with open(output_dir + "/" + critical_dir + "/" + filename, "w") as critical_file:
             critical_file.write(database.get_critical_businesses_json(license_code, year))
 
 
 def _dump_access(database, license_code, license_desc, output_dir, census_dir, community_dir):
-
+    """
+    Writes neighborhood and census-level accessibility to disk.
+    :param database: The _Analysis object containing data to write
+    :param license_code: The license code of the data to write
+    :param license_desc: The license code description of the data to write (determines file names)
+    :param output_dir: The base output directory to write
+    :param census_dir: The name of the census directory to write to
+    :param community_dir: The name of the community directory to write to
+    :return: None
+    """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     if not os.path.exists(output_dir + "/" + census_dir):
         os.makedirs(output_dir + "/" + census_dir)
     if not os.path.exists(output_dir + "/" + community_dir):
         os.makedirs(output_dir + "/" + community_dir)
-
-    for year in database.get_years_for_license_code(license_code):
-        filename = data.get_license_key(license_desc) + "-" + str(year) + ".json"
+    for year in database.get_analyzed_years_for_license_code(license_code):
+        filename = data.get_license_file_key(license_desc) + "-" + str(year) + ".json"
         with open(output_dir + "/" + census_dir + "/" + filename, "w") as census_file:
-            census_file.write(database.get_census_records_json(license_code, year))
+            census_file.write(database.get_analyzed_census_records_json(license_code, year))
         with open(output_dir + "/" + community_dir + "/" + filename, "w") as community_file:
             community_file.write(database.get_neighborhood_records_json(license_code, year))
-

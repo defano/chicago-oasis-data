@@ -11,7 +11,7 @@ def produce_license_rpt(output_dir):
         table.append({
             "title": description,
             "label": description,
-            "value": data.get_license_key(description),
+            "value": data.get_license_file_key(description),
             "min-year": year_range[0],
             "max-year": year_range[1]
         })
